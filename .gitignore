@@ -1,0 +1,8 @@
+*.swp
+vendor/
+bin/
+_dist/
+.idea
+glide.lock
+golib
+release
