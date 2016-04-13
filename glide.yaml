@@ -2,6 +2,8 @@ package: github.com/fabric8io/jenkinshift
 import:
 - package: github.com/emicklei/go-restful
   verison: 496d495156da218b9912f03dfa7df7f80fbd8cc3
+- package: github.com/fabric8io/golang-jenkins
+  verison: fd49fcd723578afb98fd72961f0c0074393ae97a
 - package: github.com/openshift/origin
   version: v1.1.6
   subpackages:
