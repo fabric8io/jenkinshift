@@ -22,7 +22,7 @@ func (r BuildConfigsResource) Register(container *restful.Container) {
 	ws.
 	Path("/namespaces/{namespace}/buildconfigs").
 	Consumes(restful.MIME_XML, restful.MIME_JSON).
-	Produces(restful.MIME_JSON, restful.MIME_XML)
+	Produces(restful.MIME_JSON)
 
 	ws.Route(ws.GET("/").To(r.getBuildConfigs))
 	ws.Route(ws.GET("/{name}").To(r.getBuildConfig))
@@ -56,17 +56,20 @@ func (r BuildConfigsResource) getBuildConfigs(request *restful.Request, response
 		return
 	}
 
-	buildConfigs := []*oapi.BuildConfig{}
+	buildConfigs := []oapi.BuildConfig{}
 
 	for _, job := range jobs {
 		buildConfig, err := r.loadBuildConfig(ns, job.Name, job.Url)
 		if err != nil {
 			log.Printf("Failed to find job %s due to %s", job.Name, err)
 		} else if buildConfig != nil {
-			buildConfigs = append(buildConfigs, buildConfig)
+			buildConfigs = append(buildConfigs, *buildConfig)
 		}
 	}
-	response.WriteEntity(buildConfigs)
+	buildConfigList := oapi.BuildConfigList{
+		Items: buildConfigs,
+	}
+	response.WriteEntity(buildConfigList)
 }
 
 // GET http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
