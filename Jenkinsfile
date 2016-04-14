@@ -3,7 +3,7 @@ node{
   stage 'canary release'
   git 'https://github.com/fabric8io/jenkinshift.git'
 
-  kubernetes.pod('buildpod').withImage('fabric8/go-builder').inside {
+  kubernetes.pod('buildpod').withImage('fabric8/go-builder').withPrivileged(true).inside {
 
     retry(3){
       sh 'make bootstrap'
