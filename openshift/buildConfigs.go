@@ -10,6 +10,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 	oapi "github.com/openshift/origin/pkg/build/api/v1"
+	tapi "github.com/openshift/origin/pkg/template/api/v1"
 )
 
 type BuildConfigsResource struct {
@@ -20,17 +21,22 @@ type BuildConfigsResource struct {
 func (r BuildConfigsResource) Register(container *restful.Container) {
 	ws := new(restful.WebService)
 	ws.
-	Path("/namespaces/{namespace}/buildconfigs").
+	Path("/namespaces/{namespace}").
 	Consumes(restful.MIME_XML, restful.MIME_JSON).
 	Produces(restful.MIME_JSON)
 
-	ws.Route(ws.GET("/").To(r.getBuildConfigs))
-	ws.Route(ws.GET("/{name}").To(r.getBuildConfig))
+	ws.Route(ws.GET("/buildconfigs/").To(r.getBuildConfigs))
+	ws.Route(ws.GET("/buildconfigs/{name}").To(r.getBuildConfig))
 	/*
-	ws.Route(ws.POST("").To(r.updateBuildConfig))
-	ws.Route(ws.PUT("/{name}").To(r.createBuildConfig))
-	ws.Route(ws.DELETE("/{name}").To(r.removeBuildConfig))
+	ws.Route(ws.POST("/buildconfigs").To(r.updateBuildConfig))
+	ws.Route(ws.PUT("/buildconfigs/{name}").To(r.createBuildConfig))
+	ws.Route(ws.DELETE("/buildconfigs/{name}").To(r.removeBuildConfig))
 	*/
+
+
+	// lets add a dummy templates REST service to avoid errors in the current fabric8 console ;)
+	ws.Route(ws.GET("/templates/").To(r.getTemplates))
+
 	container.Add(ws)
 }
 
@@ -136,6 +142,14 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string, jobUrl 
 		},
 	}, nil
 }
+
+// GET http://localhost:8080/namespaces/{namespaces}/templates
+//
+func (r BuildConfigsResource) getTemplates(request *restful.Request, response *restful.Response) {
+	templateList := tapi.TemplateList{}
+	response.WriteEntity(templateList)
+}
+
 
 func getGitUrlFromScm(scm gojenkins.Scm) string {
 	answer := ""

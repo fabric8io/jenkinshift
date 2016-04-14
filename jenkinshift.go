@@ -14,11 +14,10 @@ func main() {
 	wsContainer := restful.NewContainer()
 	wsContainer.Router(restful.CurlyRouter{})
 
-	jenkinsHost := os.Getenv("JENKINS_HOST")
-	if len(jenkinsHost) == 0 {
-		jenkinsHost = "jenkins"
+	jenkinsUrl := os.Getenv("JENKINS_URL")
+	if len(jenkinsUrl) == 0 {
+		jenkinsUrl = "http://jenkins/"
 	}
-	jenkinsUrl := "http://" + jenkinsHost + "/"
 
 	log.Printf("Invoking Jenkins on URL %s", jenkinsUrl)
 
