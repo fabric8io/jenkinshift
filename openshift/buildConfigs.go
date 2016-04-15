@@ -112,7 +112,7 @@ func (r BuildConfigsResource) createBuildConfig(request *restful.Request, respon
 
 	log.Printf("About to create job %s with structure: (%+v)", jobName, jobItem)
 	err = r.Jenkins.CreateJob(jobItem, jobName)
-	respondOK(request, response)
+	response.WriteEntity(buildConfig)
 }
 
 // PUT http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
