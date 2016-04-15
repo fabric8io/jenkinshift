@@ -11,7 +11,7 @@ node{
 
     sh "mkdir -p ../go/src/github.com/fabric8io; cp -R ../jenkinshift ../go/src/github.com/fabric8io/; cd ../go/src/github.com/fabric8io/jenkinshift; make build test lint"
 
-    sh "mv ../go/src/github.com/fabric8io/jenkinshift/bin ."
+    sh "cp -R ../go/src/github.com/fabric8io/jenkinshift/bin ."
 
     def imageName = 'jenkinshift'
     def tag = 'latest'
