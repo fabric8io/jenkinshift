@@ -18,6 +18,10 @@ func main() {
 	if len(jenkinsUrl) == 0 {
 		jenkinsUrl = "http://jenkins/"
 	}
+	port := os.Getenv("PORT")
+	if len(port) == 0 {
+		port = "9191"
+	}
 
 	log.Printf("Invoking Jenkins on URL %s", jenkinsUrl)
 
@@ -36,7 +40,7 @@ func main() {
 	}
 	bcr.Register(wsContainer)
 
-	log.Printf("jenkinshift start listening on localhost:9090")
-	server := &http.Server{Addr: ":9090", Handler: wsContainer}
+	log.Printf("jenkinshift start listening on localhost:%s", port)
+	server := &http.Server{Addr: ":" + port, Handler: wsContainer}
 	log.Fatal(server.ListenAndServe())
 }
