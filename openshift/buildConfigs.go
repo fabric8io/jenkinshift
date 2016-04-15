@@ -112,6 +112,7 @@ func (r BuildConfigsResource) createBuildConfig(request *restful.Request, respon
 
 	log.Printf("About to create job %s with structure: (%+v)", jobName, jobItem)
 	err = r.Jenkins.CreateJob(jobItem, jobName)
+	response.WriteHeader(http.StatusOK)
 	response.WriteEntity(buildConfig)
 }
 
