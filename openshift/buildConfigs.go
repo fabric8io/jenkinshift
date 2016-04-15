@@ -21,33 +21,20 @@ type BuildConfigsResource struct {
 func (r BuildConfigsResource) Register(container *restful.Container) {
 	ws := new(restful.WebService)
 	ws.
-	Path("/namespaces/{namespace}").
+	Path("/oapi/v1/namespaces/{namespace}").
 	Consumes(restful.MIME_XML, restful.MIME_JSON).
 	Produces(restful.MIME_JSON)
 
 	ws.Route(ws.GET("/buildconfigs/").To(r.getBuildConfigs))
 	ws.Route(ws.GET("/buildconfigs/{name}").To(r.getBuildConfig))
-	/*
-	ws.Route(ws.POST("/buildconfigs").To(r.updateBuildConfig))
-	ws.Route(ws.PUT("/buildconfigs/{name}").To(r.createBuildConfig))
+	ws.Route(ws.POST("/buildconfigs").To(r.createBuildConfig))
+	ws.Route(ws.PUT("/buildconfigs/{name}").To(r.updateBuildConfig))
 	ws.Route(ws.DELETE("/buildconfigs/{name}").To(r.removeBuildConfig))
-	*/
-
 
 	// lets add a dummy templates REST service to avoid errors in the current fabric8 console ;)
 	ws.Route(ws.GET("/templates/").To(r.getTemplates))
 
 	container.Add(ws)
-}
-
-func respondError(request *restful.Request, response *restful.Response, err error) {
-	message := fmt.Sprintf("%s", err)
-	respondErrorMessage(request, response, message)
-}
-
-func respondErrorMessage(request *restful.Request, response *restful.Response, message string) {
-	response.AddHeader("Content-Type", "text/plain")
-	response.WriteErrorString(http.StatusNotFound, message)
 }
 
 // GET http://localhost:8080/namespaces/{namespaces}/buildconfigs
@@ -101,6 +88,89 @@ func (r BuildConfigsResource) getBuildConfig(request *restful.Request, response 
 	response.WriteEntity(buildConfig)
 }
 
+// POST http://localhost:8080/namespaces/{namespaces}/buildconfigs
+//
+func (r BuildConfigsResource) createBuildConfig(request *restful.Request, response *restful.Response) {
+	buildConfig := oapi.BuildConfig{}
+	err := request.ReadEntity(&buildConfig)
+	if err != nil {
+		respondError(request, response, err)
+		return
+	}
+	ns := request.PathParameter("namespace")
+	objectMeta := buildConfig.ObjectMeta
+	if len(objectMeta.Namespace) == 0 {
+		objectMeta.Namespace = ns
+	}
+	jobName := objectMeta.Name
+	if len(jobName) == 0 {
+		respondErrorMessage(request, response, "No BuildConfig name specified in the body")
+		return
+	}
+	jobItem := gojenkins.JobItem{}
+	populateJobForBuildConfig(&buildConfig, &jobItem)
+
+	log.Printf("About to create job %s with structure: (%+v)", jobName, jobItem)
+	err = r.Jenkins.CreateJob(jobItem, jobName)
+	response.WriteEntity("OK")
+}
+
+// PUT http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
+//
+func (r BuildConfigsResource) updateBuildConfig(request *restful.Request, response *restful.Response) {
+	jobName := request.PathParameter("name")
+	if len(jobName) == 0 {
+		respondErrorMessage(request, response, "No BuildConfig name specified in URL")
+		return
+	}
+	buildConfig := oapi.BuildConfig{}
+	err := request.ReadEntity(&buildConfig)
+	if err != nil {
+		respondError(request, response, err)
+		return
+	}
+	ns := request.PathParameter("namespace")
+	objectMeta := buildConfig.ObjectMeta
+	if len(objectMeta.Namespace) == 0 {
+		objectMeta.Namespace = ns
+	}
+	objectMeta.Name = jobName
+
+	response.WriteEntity("TODO: Not implemented!!!")
+	/*
+	// TODO
+	jobItem := gojenkins.JobItem{}
+	populateJobForBuildConfig(&buildConfig, &jobItem)
+
+	err := r.Jenkins.UpdateJob(jobItem, jobName)
+	if err != nil {
+		respondError(request, response, err)
+		return
+	}
+	response.WriteEntity("OK")
+	*/
+}
+
+// DELETE http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
+//
+func (r BuildConfigsResource) removeBuildConfig(request *restful.Request, response *restful.Response) {
+	jobName := request.PathParameter("name")
+	if len(jobName) == 0 {
+		respondErrorMessage(request, response, "No BuildConfig name specified in URL")
+		return
+	}
+	response.WriteEntity("TODO: Not implemented!!!")
+	/*
+	// TODO needs a RemoveJob API!
+	err := r.Jenkins.RemoveJob(jobName)
+	if err != nil {
+		respondError(request, response, err)
+		return
+	}
+	response.WriteEntity("OK")
+	*/
+}
+
 // loadBuildConfig loads a BuildConfig for a given jobName
 func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string, jobUrl string) (*oapi.BuildConfig, error) {
 	jenkins := r.Jenkins
@@ -151,6 +221,31 @@ func (r BuildConfigsResource) getTemplates(request *restful.Request, response *r
 }
 
 
+func populateJobForBuildConfig(buildConfig *oapi.BuildConfig, jobItem *gojenkins.JobItem) {
+	gitUrls := []string{}
+	gitSource := buildConfig.Spec.BuildSpec.Source.Git
+	if gitSource != nil {
+		uri := gitSource.URI
+		if len(uri) > 0 {
+			gitUrls = append(gitUrls, uri)
+		}
+	}
+	jobItem.PipelineJobItem = &gojenkins.PipelineJobItem{
+	 	Definition: gojenkins.PipelineDefinition{
+			Scm: gojenkins.Scm{
+				ScmContent: &gojenkins.ScmGit{
+					UserRemoteConfigs: gojenkins.UserRemoteConfigs{
+						UserRemoteConfig: gojenkins.UserRemoteConfig{
+							Urls: gitUrls,
+						},
+					},
+				},
+			},
+
+		},
+	}
+}
+
 func getGitUrlFromScm(scm gojenkins.Scm) string {
 	answer := ""
 	scmContent := scm.ScmContent
@@ -166,4 +261,15 @@ func getGitUrlFromScm(scm gojenkins.Scm) string {
 	}
 	return answer
 }
+
+func respondError(request *restful.Request, response *restful.Response, err error) {
+	message := fmt.Sprintf("%s", err)
+	respondErrorMessage(request, response, message)
+}
+
+func respondErrorMessage(request *restful.Request, response *restful.Response, message string) {
+	response.AddHeader("Content-Type", "text/plain")
+	response.WriteErrorString(http.StatusNotFound, message)
+}
+
 
