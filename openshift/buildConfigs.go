@@ -112,7 +112,7 @@ func (r BuildConfigsResource) createBuildConfig(request *restful.Request, respon
 
 	log.Printf("About to create job %s with structure: (%+v)", jobName, jobItem)
 	err = r.Jenkins.CreateJob(jobItem, jobName)
-	response.WriteEntity("OK")
+	respondOK(request, response)
 }
 
 // PUT http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
@@ -147,7 +147,7 @@ func (r BuildConfigsResource) updateBuildConfig(request *restful.Request, respon
 		respondError(request, response, err)
 		return
 	}
-	response.WriteEntity("OK")
+	returnOK(request, response)
 	*/
 }
 
@@ -167,7 +167,7 @@ func (r BuildConfigsResource) removeBuildConfig(request *restful.Request, respon
 		respondError(request, response, err)
 		return
 	}
-	response.WriteEntity("OK")
+	returnOK(request, response)
 	*/
 }
 
@@ -270,6 +270,12 @@ func respondError(request *restful.Request, response *restful.Response, err erro
 func respondErrorMessage(request *restful.Request, response *restful.Response, message string) {
 	response.AddHeader("Content-Type", "text/plain")
 	response.WriteErrorString(http.StatusNotFound, message)
+}
+
+func respondOK(request *restful.Request, response *restful.Response) {
+	response.AddHeader("Content-Type", "application/json")
+	response.WriteEntity("{}")
+
 }
 
 
