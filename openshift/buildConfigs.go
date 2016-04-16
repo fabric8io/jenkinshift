@@ -110,9 +110,12 @@ func (r BuildConfigsResource) createBuildConfig(request *restful.Request, respon
 	jobItem := gojenkins.JobItem{}
 	populateJobForBuildConfig(&buildConfig, &jobItem)
 
-	log.Printf("About to create job %s with structure: (%+v)", jobName, jobItem)
+	log.Printf("About to create job %s with structure: (%+v)", jobName, jobItem.PipelineJobItem)
 	err = r.Jenkins.CreateJob(jobItem, jobName)
-	response.WriteHeader(http.StatusOK)
+	if err != nil  {
+		respondError(request, response, err)
+		return
+	}
 	response.WriteEntity(buildConfig)
 }
 
@@ -231,8 +234,15 @@ func populateJobForBuildConfig(buildConfig *oapi.BuildConfig, jobItem *gojenkins
 			gitUrls = append(gitUrls, uri)
 		}
 	}
+	script := `node {
+	   stage 'Stage 1'
+	   echo 'Hello World 1'
+	   stage 'Stage 2'
+	   echo 'Hello World 2'
+	}`
 	jobItem.PipelineJobItem = &gojenkins.PipelineJobItem{
 	 	Definition: gojenkins.PipelineDefinition{
+			Script: script,
 			Scm: gojenkins.Scm{
 				ScmContent: &gojenkins.ScmGit{
 					UserRemoteConfigs: gojenkins.UserRemoteConfigs{
