@@ -116,7 +116,7 @@ func (r BuildConfigsResource) createBuildConfig(request *restful.Request, respon
 		respondError(request, response, err)
 		return
 	}
-	response.WriteEntity(buildConfig)
+	response.WriteHeaderAndEntity(http.StatusCreated, buildConfig)
 }
 
 // PUT http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
