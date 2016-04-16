@@ -151,7 +151,7 @@ func (r BuildConfigsResource) updateBuildConfig(request *restful.Request, respon
 		respondError(request, response, err)
 		return
 	}
-	response.WriteHeaderAndEntity(http.StatusCreated, buildConfig)
+	response.WriteHeaderAndEntity(http.StatusOK, buildConfig)
 }
 
 // DELETE http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
