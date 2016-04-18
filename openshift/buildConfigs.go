@@ -53,7 +53,7 @@ func (r BuildConfigsResource) getBuildConfigs(request *restful.Request, response
 	buildConfigs := []oapi.BuildConfig{}
 
 	for _, job := range jobs {
-		buildConfig, err := r.loadBuildConfig(ns, job.Name, job.Url)
+		buildConfig, err := r.loadBuildConfig(ns, job.Name)
 		if err != nil {
 			log.Printf("Failed to find job %s due to %s", job.Name, err)
 		} else if buildConfig != nil {
@@ -75,9 +75,8 @@ func (r BuildConfigsResource) getBuildConfig(request *restful.Request, response 
 		respondErrorMessage(request, response, "No BuildConfig name specified in URL")
 		return
 	}
-	jobUrl := r.Jenkins.GetJobURL(jobName)
 
-	buildConfig, err := r.loadBuildConfig(ns, jobName, jobUrl)
+	buildConfig, err := r.loadBuildConfig(ns, jobName)
 	if err != nil {
 		respondError(request, response, err)
 		return
@@ -175,7 +174,8 @@ func (r BuildConfigsResource) removeBuildConfig(request *restful.Request, respon
 }
 
 // loadBuildConfig loads a BuildConfig for a given jobName
-func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string, jobUrl string) (*oapi.BuildConfig, error) {
+func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.BuildConfig, error) {
+	jobUrlPath := r.Jenkins.GetJobURLPath(jobName)
 	jenkins := r.Jenkins
 	item, err := jenkins.GetJobConfig(jobName)
 	gitUrl := ""
@@ -199,7 +199,7 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string, jobUrl 
 			Name: jobName,
 			Namespace: ns,
 			Annotations: map[string]string{
-				"fabric8.io/jenkins-url": jobUrl,
+				"fabric8.io/jenkins-url-path": jobUrlPath,
 			},
 		},
 		Spec: oapi.BuildConfigSpec{
