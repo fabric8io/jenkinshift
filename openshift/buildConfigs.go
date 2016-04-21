@@ -161,16 +161,12 @@ func (r BuildConfigsResource) removeBuildConfig(request *restful.Request, respon
 		respondErrorMessage(request, response, "No BuildConfig name specified in URL")
 		return
 	}
-	response.WriteEntity("TODO: Not implemented!!!")
-	/*
-	// TODO needs a RemoveJob API!
 	err := r.Jenkins.RemoveJob(jobName)
 	if err != nil {
 		respondError(request, response, err)
 		return
 	}
-	returnOK(request, response)
-	*/
+	response.WriteHeaderAndEntity(http.StatusOK, "{}")
 }
 
 // loadBuildConfig loads a BuildConfig for a given jobName
