@@ -11,6 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 	oapi "github.com/openshift/origin/pkg/build/api/v1"
 	tapi "github.com/openshift/origin/pkg/template/api/v1"
+	"strings"
 )
 
 type BuildConfigsResource struct {
@@ -46,8 +47,11 @@ func (r BuildConfigsResource) getBuildConfigs(request *restful.Request, response
 	jenkins := r.Jenkins
 	jobs, err := jenkins.GetJobs()
 	if err != nil {
-		respondError(request, response, err)
-		return
+		errorText := fmt.Sprintf("%v", err)
+		if !strings.Contains(errorText, "no such host") {
+			respondError(request, response, err)
+			return
+		}
 	}
 
 	buildConfigs := []oapi.BuildConfig{}
