@@ -33,10 +33,22 @@ func (r BuildConfigsResource) Register(container *restful.Container) {
 	ws.Route(ws.PUT("/buildconfigs/{name}").To(r.updateBuildConfig))
 	ws.Route(ws.DELETE("/buildconfigs/{name}").To(r.removeBuildConfig))
 
+
+	ws.Route(ws.GET("/builds/").To(r.getBuilds))
+
 	// lets add a dummy templates REST service to avoid errors in the current fabric8 console ;)
 	ws.Route(ws.GET("/templates/").To(r.getTemplates))
 
 	container.Add(ws)
+}
+
+// GET http://localhost:8080/namespaces/{namespaces}/builds
+//
+func (r BuildConfigsResource) getBuilds(request *restful.Request, response *restful.Response) {
+	buildList := oapi.BuildList{
+		Items: []oapi.Build{},
+	}
+	response.WriteEntity(buildList)
 }
 
 // GET http://localhost:8080/namespaces/{namespaces}/buildconfigs
