@@ -20,7 +20,7 @@ import (
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
-	"k8s.io/kubernetes/test/e2e"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
@@ -81,7 +81,7 @@ func InitTest() {
 	TestContext.CreateTestingNS = createTestingNS
 
 	// Override the default Kubernetes E2E configuration
-	e2e.SetTestContext(TestContext)
+	e2e.TestContext = TestContext
 }
 
 func ExecuteTest(t *testing.T, suite string) {
@@ -127,6 +127,14 @@ func isKubernetesE2ETest() bool {
 	return isPackage("/kubernetes/test/e2e/")
 }
 
+func testNameContains(name string) bool {
+	return strings.Contains(ginkgo.CurrentGinkgoTestDescription().FullTestText, name)
+}
+
+func skipTestNamespaceCustomization() bool {
+	return (isPackage("/kubernetes/test/e2e/namespace.go") && (testNameContains("should always delete fast") || testNameContains("should delete fast enough")))
+}
+
 // Holds custom namespace creation functions so we can customize per-test
 var customCreateTestingNSFuncs = map[string]e2e.CreateTestingNSFn{}
 
@@ -154,7 +162,7 @@ func createTestingNS(baseName string, c *kclient.Client, labels map[string]strin
 	}
 
 	// Add anyuid and privileged permissions for upstream tests
-	if isKubernetesE2ETest() {
+	if isKubernetesE2ETest() && !skipTestNamespaceCustomization() {
 		e2e.Logf("About to run a Kube e2e test, ensuring namespace is privileged")
 		// add to the "privileged" scc to ensure pods that explicitly
 		// request extra capabilities are not rejected
@@ -166,7 +174,7 @@ func createTestingNS(baseName string, c *kclient.Client, labels map[string]strin
 
 		// The intra-pod test requires that the service account have
 		// permission to retrieve service endpoints.
-		osClient, _, err := configapi.GetOpenShiftClient(KubeConfigPath())
+		osClient, _, err := configapi.GetOpenShiftClient(KubeConfigPath(), nil)
 		if err != nil {
 			return ns, err
 		}
@@ -200,18 +208,11 @@ func addE2EServiceAccountsToSCC(c *kclient.Client, namespaces []kapi.Namespace, 
 			return err
 		}
 
-		groups := []string{}
-		for _, name := range scc.Groups {
-			if !strings.Contains(name, "e2e-") {
-				groups = append(groups, name)
-			}
-		}
 		for _, ns := range namespaces {
 			if strings.HasPrefix(ns.Name, "e2e-") {
-				groups = append(groups, fmt.Sprintf("system:serviceaccounts:%s", ns.Name))
+				scc.Groups = append(scc.Groups, fmt.Sprintf("system:serviceaccounts:%s", ns.Name))
 			}
 		}
-		scc.Groups = groups
 		if _, err := c.SecurityContextConstraints().Update(scc); err != nil {
 			return err
 		}

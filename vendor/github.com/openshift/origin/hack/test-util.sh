@@ -1,22 +1,19 @@
 #!/bin/bash
 # This file ensures that the helper functions in util.sh behave as expected
-
-set -o errexit
-set -o nounset
-set -o pipefail
-# set -x
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/cmd_util.sh"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
+trap os::test::junit::reconcile_output EXIT
 
 BASETMPDIR="${TMPDIR:-/tmp}/openshift/test-tools"
-JUNIT_OUTPUT_FILE="${BASETMPDIR}/junit_output.txt"
+JUNIT_REPORT_OUTPUT="${BASETMPDIR}/junit_output.txt"
+mkdir -p "${BASETMPDIR}"
+touch "${JUNIT_REPORT_OUTPUT}"
 
 # set verbosity so we can see that command output renders correctly
 VERBOSE=1
 
+os::test::junit::declare_suite_start "cmd/util"
+
+os::test::junit::declare_suite_start "cmd/util/positive"
 # positive tests
 os::cmd::expect_success 'exit 0'
 
@@ -37,7 +34,9 @@ os::cmd::expect_code_and_text 'echo "hello" && exit 213' '213' 'hello'
 os::cmd::expect_code_and_not_text 'echo "goodbye" && exit 213' '213' 'hello'
 
 echo "positive tests: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/util/negative"
 # negative tests
 
 if os::cmd::expect_success 'exit 1'; then
@@ -125,7 +124,9 @@ if os::cmd::expect_code_and_not_text 'echo "hello" && exit 0' '1' 'hello'; then
 fi
 
 echo "negative tests: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/util/complex"
 # complex input tests
 
 # pipes
@@ -157,7 +158,7 @@ os::cmd::expect_success_and_text 'echo $(( 1 - 20 ))' '\-19' # we need to escape
 # redirects
 os::cmd::expect_failure_and_text 'grep' '(Usage|usage)'
 
-os::cmd::expect_success_and_not_text 'pwd 1>/dev/null' '.' 
+os::cmd::expect_success_and_not_text 'pwd 1>/dev/null' '.'
 
 os::cmd::expect_failure_and_not_text 'grep 2>/dev/null' '(Usage|usage)'
 
@@ -170,170 +171,173 @@ EOF
 os::cmd::expect_success 'grep hello <<< hello'
 
 echo "complex tests: ok"
+os::test::junit::declare_suite_end
 
-
+os::test::junit::declare_suite_start "cmd/util/output"
 # test for output correctness
 
 # expect_code
 output=$(os::cmd::expect_code 'exit 0' '0')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_code 'exit 1' '0') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
 
 output=$(os::cmd::expect_code 'exit 1' '1')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_code 'exit 0' '1') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
 
 output=$(os::cmd::expect_code 'exit 99' '99')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_code 'exit 1' '99') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
 
 # expect_success
 output=$(os::cmd::expect_success 'exit 0')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_success 'exit 1') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
 
 # expect_failure
 output=$(os::cmd::expect_failure 'exit 1')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_failure 'exit 0') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
 
 # expect_code_and_text
 output=$(os::cmd::expect_code_and_text 'echo "hello" && exit 0' '0' 'hello')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_code_and_text 'echo "hello" && exit 1' '0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q 'hello'
 
 output=$(os::cmd::expect_code_and_text 'echo "goodbye" && exit 0' '0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the output content test failed' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the output content test failed'
+echo "${output}" | grep -q 'goodbye'
 
 output=$(os::cmd::expect_code_and_text 'echo "goodbye" && exit 1' '0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q '; the output content test failed' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q '; the output content test failed'
+echo "${output}" | grep -q 'goodbye'
 
 # expect_success_and_text
 output=$(os::cmd::expect_success_and_text 'echo "hello" && exit 0' 'hello')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_success_and_text 'echo "hello" && exit 1' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q 'hello'
 
 output=$(os::cmd::expect_success_and_text 'echo "goodbye" && exit 0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the output content test failed' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the output content test failed'
+echo "${output}" | grep -q 'goodbye'
 
 output=$(os::cmd::expect_success_and_text 'echo "goodbye" && exit 1' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q '; the output content test failed' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q '; the output content test failed'
+echo "${output}" | grep -q 'goodbye'
 
 # expect_failure_and_text
 output=$(os::cmd::expect_failure_and_text 'echo "hello" && exit 1' 'hello')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_failure_and_text 'echo "hello" && exit 0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q 'hello'
 
 output=$(os::cmd::expect_failure_and_text 'echo "goodbye" && exit 1' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the output content test failed' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the output content test failed'
+echo "${output}" | grep -q 'goodbye'
 
 output=$(os::cmd::expect_failure_and_text 'echo "goodbye" && exit 0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q '; the output content test failed' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q '; the output content test failed'
+echo "${output}" | grep -q 'goodbye'
 
 # expect_code_and_not_text
 output=$(os::cmd::expect_code_and_not_text 'echo "goodbye" && exit 0' '0' 'hello')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_code_and_not_text 'echo "goodbye" && exit 1' '0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q 'goodbye'
 
 output=$(os::cmd::expect_code_and_not_text 'echo "hello" && exit 0' '0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the output content test failed' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the output content test failed'
+echo "${output}" | grep -q 'hello'
 
 output=$(os::cmd::expect_code_and_not_text 'echo "hello" && exit 1' '0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q '; the output content test failed' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q '; the output content test failed'
+echo "${output}" | grep -q 'hello'
 
 # expect_success_and_not_text
 output=$(os::cmd::expect_success_and_not_text 'echo "goodbye" && exit 0' 'hello')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_success_and_not_text 'echo "goodbye" && exit 1' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q 'goodbye'
 
 output=$(os::cmd::expect_success_and_not_text 'echo "hello" && exit 0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the output content test failed' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the output content test failed'
+echo "${output}" | grep -q 'hello'
 
 output=$(os::cmd::expect_success_and_not_text 'echo "hello" && exit 1' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q '; the output content test failed' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q '; the output content test failed'
+echo "${output}" | grep -q 'hello'
 
 # expect_failure_and_not_text
 output=$(os::cmd::expect_failure_and_not_text 'echo "goodbye" && exit 1' 'hello')
-echo "${output}" | grep -q 'SUCCESS' 
+echo "${output}" | grep -q 'SUCCESS'
 
 output=$(os::cmd::expect_failure_and_not_text 'echo "goodbye" && exit 0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q 'goodbye' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q 'goodbye'
 
 output=$(os::cmd::expect_failure_and_not_text 'echo "hello" && exit 1' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the output content test failed' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the output content test failed'
+echo "${output}" | grep -q 'hello'
 
 output=$(os::cmd::expect_failure_and_not_text 'echo "hello" && exit 0' 'hello') || true
-echo "${output}" | grep -q 'FAILURE' 
-echo "${output}" | grep -q 'the command returned the wrong error code' 
-echo "${output}" | grep -q '; the output content test failed' 
-echo "${output}" | grep -q 'hello' 
+echo "${output}" | grep -q 'FAILURE'
+echo "${output}" | grep -q 'the command returned the wrong error code'
+echo "${output}" | grep -q '; the output content test failed'
+echo "${output}" | grep -q 'hello'
 
 echo "output tests: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/util/tryuntil"
 function current_time_millis_mod_1000() {
 	mod=$(expr $(date +%s000) % 1000)
 	if [ $mod -eq 0 ]; then
@@ -379,7 +383,9 @@ if os::cmd::try_until_failure 'exit 0' $(( 1 * second )); then
 fi
 
 echo "try_until: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/util/compression"
 TMPDIR="${TMPDIR:-"/tmp"}"
 TEST_DIR=${TMPDIR}/openshift/origin/test/cmd
 rm -rf ${TEST_DIR} || true
@@ -433,3 +439,8 @@ line 2
 os::cmd::internal::compress_output ${TEST_DIR}//compress_test.txt > ${TEST_DIR}/actual-compressed.out
 diff ${TEST_DIR}/expected-compressed.out ${TEST_DIR}/actual-compressed.out
 echo "compression: ok"
+os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_end
+
+os::test::junit::check_test_counters

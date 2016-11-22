@@ -51,7 +51,7 @@ func GetBootstrapSecurityContextConstraints(sccNameToAdditionalGroups map[string
 	var (
 		// this is set to 10 to allow wiggle room for admins to set other priorities without
 		// having to adjust anyUID.
-		securityContextConstraintsAnyUIDPriority = 10
+		securityContextConstraintsAnyUIDPriority = int32(10)
 	)
 
 	constraints := []kapi.SecurityContextConstraints{
@@ -81,6 +81,7 @@ func GetBootstrapSecurityContextConstraints(sccNameToAdditionalGroups map[string
 			SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
 				Type: kapi.SupplementalGroupsStrategyRunAsAny,
 			},
+			SeccompProfiles: []string{"*"},
 		},
 		// SecurityContextConstraintNonRoot does not allow host access, allocates SELinux labels
 		// and allows the user to request a specific UID or provide the default in the dockerfile.
@@ -110,7 +111,7 @@ func GetBootstrapSecurityContextConstraints(sccNameToAdditionalGroups map[string
 				Type: kapi.SupplementalGroupsStrategyRunAsAny,
 			},
 		},
-		// SecurityContextConstraintHostMountAndAnyUID is the same as the restricted scc but allows host mounts and running as any UID.
+		// SecurityContextConstraintHostMountAndAnyUID is the same as the restricted scc but allows the use of the hostPath and NFS plugins, and running as any UID.
 		// Used by the PV recycler.
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -119,7 +120,7 @@ func GetBootstrapSecurityContextConstraints(sccNameToAdditionalGroups map[string
 					DescriptionAnnotation: SecurityContextConstraintHostMountAndAnyUIDDesc,
 				},
 			},
-			Volumes: []kapi.FSType{kapi.FSTypeHostPath, kapi.FSTypeEmptyDir, kapi.FSTypeSecret, kapi.FSTypeDownwardAPI, kapi.FSTypeConfigMap, kapi.FSTypePersistentVolumeClaim},
+			Volumes: []kapi.FSType{kapi.FSTypeHostPath, kapi.FSTypeEmptyDir, kapi.FSTypeSecret, kapi.FSTypeDownwardAPI, kapi.FSTypeConfigMap, kapi.FSTypePersistentVolumeClaim, kapi.FSTypeNFS},
 			SELinuxContext: kapi.SELinuxContextStrategyOptions{
 				// This strategy requires that annotations on the namespace which will be populated
 				// by the admission controller.  If namespaces are not annotated creating the strategy
@@ -229,7 +230,7 @@ func GetBootstrapSecurityContextConstraints(sccNameToAdditionalGroups map[string
 			// prefer the anyuid SCC over ones that force a uid
 			Priority: &securityContextConstraintsAnyUIDPriority,
 			// drops unsafe caps
-			RequiredDropCapabilities: []kapi.Capability{"KILL", "MKNOD", "SYS_CHROOT"},
+			RequiredDropCapabilities: []kapi.Capability{"MKNOD", "SYS_CHROOT"},
 		},
 		// SecurityContextConstraintsHostNetwork allows host network and host ports
 		{

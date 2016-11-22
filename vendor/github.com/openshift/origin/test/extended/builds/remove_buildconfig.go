@@ -11,10 +11,10 @@ import (
 	exutil "github.com/openshift/origin/test/extended/util"
 )
 
-var _ = g.Describe("[builds] remove all builds when build configuration is removed", func() {
+var _ = g.Describe("[builds][Conformance] remove all builds when build configuration is removed", func() {
 	defer g.GinkgoRecover()
 	var (
-		buildFixture = exutil.FixturePath("..", "extended", "fixtures", "test-build.json")
+		buildFixture = exutil.FixturePath("testdata", "test-build.json")
 		oc           = exutil.NewCLI("cli-remove-build", exutil.KubeConfigPath())
 	)
 
@@ -34,8 +34,9 @@ var _ = g.Describe("[builds] remove all builds when build configuration is remov
 
 			g.By("starting multiple builds")
 			for i := range builds {
-				builds[i], err = oc.Run("start-build").Args("sample-build").Output()
+				stdout, _, err := exutil.StartBuild(oc, "sample-build", "-o=name")
 				o.Expect(err).NotTo(o.HaveOccurred())
+				builds[i] = stdout
 			}
 
 			g.By("deleting the buildconfig")

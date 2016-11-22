@@ -3,19 +3,26 @@ import:
 - package: github.com/emicklei/go-restful
   version: 496d495156da218b9912f03dfa7df7f80fbd8cc3
 - package: github.com/fabric8io/golang-jenkins
-  version: fd49fcd723578afb98fd72961f0c0074393ae97a
+  version: 31c8da979ab8cf66e6622f89f4e33f654099ab31
 - package: github.com/openshift/origin
-  version: v1.1.6
+  version: v1.3.0
   subpackages:
-  - pkg/build
+  - pkg/client
+  - pkg/cmd/admin/policy
+  - pkg/cmd/server/bootstrappolicy
+  - pkg/route/api
+  - pkg/template
+  - pkg/template/api
+  - pkg/template/api/v1
+  - pkg/template/generator
 - package: github.com/spf13/cobra
 - package: github.com/spf13/pflag
 - package: golang.org/x/crypto
   subpackages:
   - ssh
 - package: k8s.io/kubernetes
-  version: release-1.2-stable-20160316
-  repo: git@github.com:openshift/kubernetes.git
+  version: 52492b4bff99ef3b8ca617d385a3ff0612f9402d
+  repo: git://github.com/openshift/kubernetes.git
   vcs: git
   subpackages:
   - pkg/api
@@ -29,7 +36,7 @@ import:
   - pkg/runtime
   - pkg/util
 - package: github.com/Sirupsen/logrus
-  version: v0.7.3
+  version: ^0.10.0
 - package: github.com/coreos/pkg
   subpackages:
   - capnslog

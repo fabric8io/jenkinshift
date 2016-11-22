@@ -4,19 +4,23 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/emicklei/go-restful"
 	"github.com/fabric8io/golang-jenkins"
 
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 	oapi "github.com/openshift/origin/pkg/build/api/v1"
 	tapi "github.com/openshift/origin/pkg/template/api/v1"
-	"strings"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 type BuildConfigsResource struct {
 	JenkinsURL	string
 	Jenkins 	*gojenkins.Jenkins
+	KubeClient      *client.Client
+	Namespace       string
 }
 
 func (r BuildConfigsResource) Register(container *restful.Container) {
@@ -132,8 +136,14 @@ func (r BuildConfigsResource) createBuildConfig(request *restful.Request, respon
 		respondError(request, response, err)
 		return
 	}
+	err = r.updateAnnotations(&buildConfig)
+	if err != nil  {
+		respondError(request, response, err)
+		return
+	}
 	response.WriteHeaderAndEntity(http.StatusCreated, buildConfig)
 }
+
 
 // PUT http://localhost:8080/namespaces/{namespaces}/buildconfigs/{name}
 //
@@ -166,6 +176,7 @@ func (r BuildConfigsResource) updateBuildConfig(request *restful.Request, respon
 		respondError(request, response, err)
 		return
 	}
+	err = r.updateAnnotations(&buildConfig)
 	response.WriteHeaderAndEntity(http.StatusOK, buildConfig)
 }
 
@@ -206,7 +217,7 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.
 		//log.Printf("Unknown job type (%+v)", item);
 		return nil, nil
 	}
-	return &oapi.BuildConfig{
+	buildConfig := &oapi.BuildConfig{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: jobName,
 			Namespace: ns,
@@ -215,7 +226,7 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.
 			},
 		},
 		Spec: oapi.BuildConfigSpec{
-			BuildSpec: oapi.BuildSpec{
+			CommonSpec: oapi.CommonSpec{
 				Source: oapi.BuildSource{
 					Type: oapi.BuildSourceGit,
 					Git: &oapi.GitBuildSource{
@@ -225,7 +236,9 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.
 				},
 			},
 		},
-	}, nil
+	}
+	r.loadAnnotations(&buildConfig)
+	return buildConfig, nil
 }
 
 // GET http://localhost:8080/namespaces/{namespaces}/templates
@@ -235,10 +248,54 @@ func (r BuildConfigsResource) getTemplates(request *restful.Request, response *r
 	response.WriteEntity(templateList)
 }
 
+func (r BuildConfigsResource) updateAnnotations(buildConfig *oapi.BuildConfig) error {
+	objectMeta := buildConfig.ObjectMeta
+	annotations := objectMeta.Annotations
+	if len(annotations) > 0 {
+		create := false
+		cmResources := r.KubeClient.ConfigMaps(r.Namespace)
+		cm, err := cmResources.Get(objectMeta.Name)
+		if err != nil || cm == nil {
+			cm = &api.ConfigMap{
+				ObjectMeta: api.ObjectMeta{
+					Name: objectMeta.Name,
+					Annotations: make(map[string]string),
+				},
+			}
+			create = true
+		}
+		updated := false
+		for k, v := range annotations {
+			if cm.Annotations[k] != v {
+				cm.Annotations[k] = v
+				updated = true
+			}
+		}
+		if updated {
+			if create {
+				_, err = cmResources.Create(cm)
+			} else {
+				_, err = cmResources.Update(cm)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (r BuildConfigsResource) loadAnnotations(buildConfig *oapi.BuildConfig) {
+	cmResources := r.KubeClient.ConfigMaps(r.Namespace)
+	cm, err := cmResources.Get(buildConfig.ObjectMeta.Name)
+	if err == nil && cm != nil {
+		for k, v := range cm.Annotations {
+			buildConfig.ObjectMeta.Annotations[k] = v
+		}
+	}
+}
 
 func populateJobForBuildConfig(buildConfig *oapi.BuildConfig, jobItem *gojenkins.JobItem) {
 	gitUrls := []string{}
-	gitSource := buildConfig.Spec.BuildSpec.Source.Git
+	gitSource := buildConfig.Spec.CommonSpec.Source.Git
 	if gitSource != nil {
 		uri := gitSource.URI
 		if len(uri) > 0 {

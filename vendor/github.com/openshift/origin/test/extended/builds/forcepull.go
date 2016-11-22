@@ -12,19 +12,13 @@ import (
 
 const (
 	buildPrefixFS = "ruby-sample-build-fs"
-	buildNameFS   = buildPrefixFS + "-1"
 	buildPrefixTS = "ruby-sample-build-ts"
-	buildNameTS   = buildPrefixTS + "-1"
 	buildPrefixFD = "ruby-sample-build-fd"
-	buildNameFD   = buildPrefixFD + "-1"
 	buildPrefixTD = "ruby-sample-build-td"
-	buildNameTD   = buildPrefixTD + "-1"
 	buildPrefixFC = "ruby-sample-build-fc"
-	buildNameFC   = buildPrefixFC + "-1"
 	buildPrefixTC = "ruby-sample-build-tc"
-	buildNameTC   = buildPrefixTC + "-1"
 
-	corruptor = "docker.io/openshift/origin-base"
+	corruptor = "docker.io/openshift/origin-deployer"
 
 	varSubSrc = "SERVICE_REGISTRY_IP"
 
@@ -40,13 +34,14 @@ var (
 	varSubDest    string
 )
 
-func doTest(bldPrefix, bldName, debugStr string, same bool, oc *exutil.CLI) {
+func doTest(bldPrefix, debugStr string, same bool, oc *exutil.CLI) {
 	// corrupt the builder image
 	exutil.CorruptImage(fullImageName, corruptor)
 
 	// kick off the app/lang build and verify the builder image accordingly
-	exutil.StartBuild(bldPrefix, oc)
-	exutil.WaitForBuild(debugStr, bldName, oc)
+	_, err := exutil.StartBuildAndWait(oc, bldPrefix)
+	o.ExpectWithOffset(1, err).NotTo(o.HaveOccurred())
+
 	if same {
 		exutil.VerifyImagesSame(fullImageName, corruptor, debugStr)
 	} else {
@@ -56,8 +51,8 @@ func doTest(bldPrefix, bldName, debugStr string, same bool, oc *exutil.CLI) {
 	// reset corrupted tagging for next test
 	exutil.ResetImage(resetData)
 	// dump tags/hexids for debug
-	_, err := exutil.DumpAndReturnTagging(tags)
-	o.Expect(err).NotTo(o.HaveOccurred())
+	_, err = exutil.DumpAndReturnTagging(tags)
+	o.ExpectWithOffset(1, err).NotTo(o.HaveOccurred())
 }
 
 /*
@@ -83,14 +78,16 @@ var _ = g.Describe("[LocalNode][builds] forcePull should affect pulling builder 
 		g.By("refresh corruptor, prep forcepull builder")
 		exutil.PullImage(corruptor, dockerClient.AuthConfiguration{})
 
+		exutil.DumpImage(corruptor)
+
 		// create the image streams and build configs for a test case specific builders
-		setupPath := exutil.FixturePath("fixtures", "forcepull-setup.json")
+		setupPath := exutil.FixturePath("testdata", "forcepull-setup.json")
 		err := exutil.CreateResource(setupPath, oc)
 
 		// kick off the build for the new builder image just for force pull so we can corrupt them without conflicting with
 		// any other tests potentially running in parallel
-		exutil.StartBuild(bldrPrefix, oc)
-		exutil.WaitForBuild("bldr build:  ", bldrPrefix+"-1", oc)
+		br, _ := exutil.StartBuildAndWait(oc, bldrPrefix)
+		br.AssertSuccess()
 
 		serviceIP, err := oc.Run("get").Args("svc", "docker-registry", "-n", "default", "--config", exutil.KubeConfigPath()).Template("{{.spec.clusterIP}}").Output()
 		o.Expect(err).NotTo(o.HaveOccurred())
@@ -106,10 +103,11 @@ var _ = g.Describe("[LocalNode][builds] forcePull should affect pulling builder 
 		fullImageName = authCfg.ServerAddress + "/" + oc.Namespace() + "/" + bldr
 		err = exutil.PullImage(fullImageName, *authCfg)
 		o.Expect(err).NotTo(o.HaveOccurred())
+		exutil.DumpImage(fullImageName)
 
 		//update the build configs in the json for the app/lang builds to point to the builder images in the internal docker registry
 		// and then create the build config resources
-		pre := exutil.FixturePath("fixtures", "forcepull-test.json")
+		pre := exutil.FixturePath("testdata", "forcepull-test.json")
 		post := exutil.ArtifactPath("forcepull-test.json")
 		varSubDest = authCfg.ServerAddress + "/" + oc.Namespace()
 		err = exutil.VarSubOnFile(pre, post, varSubSrc, varSubDest)
@@ -137,27 +135,27 @@ var _ = g.Describe("[LocalNode][builds] forcePull should affect pulling builder 
 
 			g.By("when s2i force pull is false")
 
-			doTest(buildPrefixFS, buildNameFS, "s2i false app/lang build", true, oc)
+			doTest(buildPrefixFS, "s2i false app/lang build", true, oc)
 
 			g.By("when s2i force pull is true")
 
-			doTest(buildPrefixTS, buildNameTS, "s2i true app/lang build", false, oc)
+			doTest(buildPrefixTS, "s2i true app/lang build", false, oc)
 
 			g.By("when docker force pull is false")
 
-			doTest(buildPrefixFD, buildNameFD, "dock false app/lang build", true, oc)
+			doTest(buildPrefixFD, "dock false app/lang build", true, oc)
 
 			g.By("docker when force pull is true")
 
-			doTest(buildPrefixTD, buildNameTD, "dock true app/lang build", false, oc)
+			doTest(buildPrefixTD, "dock true app/lang build", false, oc)
 
 			g.By("when custom force pull is false")
 
-			doTest(buildPrefixFC, buildNameFC, "cust false app/lang build", true, oc)
+			doTest(buildPrefixFC, "cust false app/lang build", true, oc)
 
 			g.By("when custom force pull is true")
 
-			doTest(buildPrefixTC, buildNameTC, "cust true app/lang build", false, oc)
+			doTest(buildPrefixTC, "cust true app/lang build", false, oc)
 
 		})
 

@@ -29,10 +29,12 @@ var (
 
 // JournalReaderConfig represents options to drive the behavior of a JournalReader.
 type JournalReaderConfig struct {
-	// The Since and NumFromTail options are mutually exclusive and determine
-	// where the reading begins within the journal.
+	// The Since, NumFromTail and Cursor options are mutually exclusive and
+	// determine where the reading begins within the journal. The order in which
+	// options are written is exactly the order of precedence.
 	Since       time.Duration // start relative to a Duration from now
 	NumFromTail uint64        // start relative to the tail
+	Cursor      string        // start relative to the cursor
 
 	// Show only journal entries whose fields match the supplied values. If
 	// the array is empty, entries will not be filtered.
@@ -89,6 +91,11 @@ func NewJournalReader(config JournalReaderConfig) (*JournalReader, error) {
 		if _, err := r.journal.PreviousSkip(config.NumFromTail + 1); err != nil {
 			return nil, err
 		}
+	} else if config.Cursor != "" {
+		// Start based on a custom cursor
+		if err := r.journal.SeekCursor(config.Cursor); err != nil {
+			return nil, err
+		}
 	}
 
 	return r, nil
@@ -125,8 +132,14 @@ func (r *JournalReader) Read(b []byte) (int, error) {
 	return len(msg), nil
 }
 
+// Close closes the JournalReader's handle to the journal.
 func (r *JournalReader) Close() error {
 	return r.journal.Close()
+}
+
+// Rewind attempts to rewind the JournalReader to the first entry.
+func (r *JournalReader) Rewind() error {
+	return r.journal.SeekHead()
 }
 
 // Follow synchronously follows the JournalReader, writing each new journal entry to writer. The

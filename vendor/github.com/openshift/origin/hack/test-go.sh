@@ -18,14 +18,9 @@
 #  - GOTEST_FLAGS:        any other flags to be sent to 'go test'
 #  - JUNIT_REPORT:        toggles the creation of jUnit XML from the test output and changes this script's output behavior
 #                         to use the 'junitreport' tool for summarizing the tests.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
+#  - DLV_DEBUG            toggles running tests using delve debugger
 function exit_trap() {
     local return_code=$?
-    echo "[DEBUG] Exit trap handler got return code ${return_code}"
 
     end_time=$(date +%s)
 
@@ -35,19 +30,14 @@ function exit_trap() {
         verb="failed"
     fi
 
-    echo "$0 ${verb} after $((${end_time} - ${start_time})) seconds"
+    echo "$0 ${verb} after $(( end_time - start_time )) seconds"
     exit "${return_code}"
 }
 
 trap exit_trap EXIT
 
 start_time=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/lib/util/environment.sh"
-cd "${OS_ROOT}"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 os::build::setup_env
 os::util::environment::setup_tmpdir_vars "test-go"
 
@@ -86,6 +76,7 @@ coverage_output_dir="${COVERAGE_OUTPUT_DIR:-}"
 coverage_spec="${COVERAGE_SPEC:--cover -covermode atomic}"
 gotest_flags="${GOTEST_FLAGS:-}"
 junit_report="${JUNIT_REPORT:-}"
+dlv_debug="${DLV_DEBUG:-}"
 
 if [[ -n "${junit_report}" && -n "${coverage_output_dir}" ]]; then
     echo "$0 cannot create jUnit XML reports and coverage reports at the same time."
@@ -125,18 +116,17 @@ fi
 # list_test_packages_under lists all packages containing Golang test files that we want to run as unit tests
 # under the given base dir in the OpenShift Origin tree
 function list_test_packages_under() {
-    local basedir=$@
+    local basedir=$*
 
     # we do not quote ${basedir} to allow for multiple arguments to be passed in as well as to allow for
     # arguments that use expansion, e.g. paths containing brace expansion or wildcards
     find ${basedir} -not \(                   \
         \(                                    \
-              -path 'Godeps'                  \
+              -path 'vendor'                  \
               -o -path '*_output'             \
-              -o -path '*_tools'              \
               -o -path '*.git'                \
               -o -path '*openshift.local.*'   \
-              -o -path '*Godeps/*'            \
+              -o -path '*vendor/*'            \
               -o -path '*assets/node_modules' \
               -o -path '*test/*'              \
         \) -prune                             \
@@ -158,7 +148,7 @@ done
 gotest_flags+=" $*"
 
 # Determine packages to test
-godeps_package_prefix="Godeps/_workspace/src/"
+godeps_package_prefix="vendor/"
 test_packages=
 if [[ -n "${package_args}" ]]; then
     for package in ${package_args}; do
@@ -173,22 +163,25 @@ else
     # If no packages are given to test, we need to generate a list of all packages with unit tests
     openshift_test_packages="$(list_test_packages_under '*')"
 
-    kubernetes_path="Godeps/_workspace/src/k8s.io/kubernetes"
-    mandatory_kubernetes_packages="${OS_GO_PACKAGE}/${kubernetes_path}/pkg/api ${OS_GO_PACKAGE}/${kubernetes_path}/pkg/api/v1"
+    kubernetes_path="vendor/k8s.io/kubernetes"
+    mandatory_kubernetes_packages="./vendor/k8s.io/kubernetes/pkg/api ./vendor/k8s.io/kubernetes/pkg/api/v1"
 
     test_packages="${openshift_test_packages} ${mandatory_kubernetes_packages}"
 
     if [[ -n "${test_kube}" ]]; then
         # we need to find all of the kubernetes test suites, excluding those we directly whitelisted before, the end-to-end suite, and
         # the go2idl tests which we currently do not support
+        # etcd3 isn't supported yet and that test flakes upstream
         optional_kubernetes_packages="$(find "${kubernetes_path}" -not \(                             \
           \(                                                                                          \
             -path "${kubernetes_path}/pkg/api"                                                        \
             -o -path "${kubernetes_path}/pkg/api/v1"                                                  \
-            -o -path "${kubernetes_path}/test/e2e"                                                    \
+            -o -path "${kubernetes_path}/test"                                                        \
             -o -path "${kubernetes_path}/cmd/libs/go2idl/client-gen/testoutput/testgroup/unversioned" \
+            -o -path "${kubernetes_path}/pkg/storage/etcd3"                                           \
+            -o -path "${kubernetes_path}/third_party/golang/go/build"                                 \
           \) -prune                                                                                   \
-        \) -name '*_test.go' | xargs -n1 dirname | sort -u | xargs -n1 printf "${OS_GO_PACKAGE}/%s\n")"
+        \) -name '*_test.go' | cut -f 2- -d / | xargs -n1 dirname | sort -u | xargs -n1 printf "./vendor/%s\n")"
 
         test_packages="${test_packages} ${optional_kubernetes_packages}"
     fi
@@ -207,7 +200,7 @@ fi
 # Run 'go test' with the accumulated arguments and packages:
 if [[ -n "${junit_report}" ]]; then
     # we need to generate jUnit xml
-    hack/build-go.sh tools/junitreport
+    "${OS_ROOT}/hack/build-go.sh" tools/junitreport
     junitreport="$(os::build::find-binary junitreport)"
 
     if [[ -z "${junitreport}" ]]; then
@@ -219,31 +212,55 @@ if [[ -n "${junit_report}" ]]; then
     fi
 
     test_output_file="${LOG_DIR}/test-go.log"
+    test_error_file="${LOG_DIR}/test-go-err.log"
     junit_report_file="${ARTIFACT_DIR}/report.xml"
 
     echo "[INFO] Running \`go test\`..."
     # we don't care if the `go test` fails in this pipe, as we want to generate the report and summarize the output anyway
     set +o pipefail
 
-    go test ${gotest_flags} ${test_packages} 2>&1              \
-        | tee ${test_output_file}                              \
-        | "${junitreport}" --type gotest                       \
-                           --suites nested                     \
-                           --roots github.com/openshift/origin \
-                           --stream                            \
+    go test ${gotest_flags} ${test_packages} 2>"${test_error_file}" \
+        | tee "${test_output_file}"                                 \
+        | "${junitreport}" --type gotest                            \
+                           --suites nested                          \
+                           --roots github.com/openshift/origin      \
+                           --stream                                 \
                            --output "${junit_report_file}"
 
-    return_code="${PIPESTATUS[0]}"
-    echo "[DEBUG] Found return code of \`go test\` to be ${return_code}"
+    test_return_code="${PIPESTATUS[0]}"
+
     set -o pipefail
 
     echo
-    cat "${junit_report_file}" | "${junitreport}" summarize
+    summary="$( "${junitreport}" summarize < "${junit_report_file}" )"
+    echo "${summary}"
+
+    if echo "${summary}" | grep -q ', 0 failed,'; then
+        if [[ "${test_return_code}" -ne "0" ]]; then
+            echo "[WARNING] While the jUnit report found no failed tests, the \`go test\` process failed."
+            echo "[WARNING] This usually means that the unit test suite failed to compile."
+        fi
+    fi
+
+    if [[ -s "${test_error_file}" ]]; then
+        echo "[WARNING] \`go test\` had the following output to stderr:"
+        cat "${test_error_file}"
+    fi
+
+    if grep -q 'WARNING: DATA RACE' "${test_output_file}"; then
+        locations=( $( sed -n '/WARNING: DATA RACE/=' "${test_output_file}") )
+        if [[ "${#locations[@]}" -gt 1 ]]; then
+            echo "[WARNING] \`go test\` detected data races."
+            echo "[WARNING] Details can be found in the full output file at lines ${locations[*]}."
+        else
+            echo "[WARNING] \`go test\` detected a data race."
+            echo "[WARNING] Details can be found in the full output file at line ${locations[*]}."
+        fi
+    fi
+
     echo "[INFO] Full output from \`go test\` logged at ${test_output_file}"
     echo "[INFO] jUnit XML report placed at ${junit_report_file}"
-
-    echo "[DEBUG] Exiting with return code ${return_code}"
-    exit "${return_code}"
+    exit "${test_return_code}"
 
 elif [[ -n "${coverage_output_dir}" ]]; then
     # we need to generate coverage reports
@@ -264,7 +281,11 @@ elif [[ -n "${coverage_output_dir}" ]]; then
     # clean up all of the individual coverage reports as they have been subsumed into the report at ${coverage_output_dir}/coverage.html
     # we can clean up all of the coverage reports at once as they all exist in subdirectories of ${coverage_output_dir}/${OS_GO_PACKAGE}
     # and they are the only files found in those subdirectories
-    rm -rf "${coverage_output_dir}/${OS_GO_PACKAGE}"
+    rm -rf "${coverage_output_dir:?}/${OS_GO_PACKAGE}"
+
+elif [[ -n "${dlv_debug}" ]]; then
+    # run tests using delve debugger
+    dlv test ${test_packages}
 else
     # we need to generate neither jUnit XML nor coverage reports
     go test ${gotest_flags} ${test_packages}
