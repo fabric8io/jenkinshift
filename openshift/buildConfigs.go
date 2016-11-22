@@ -202,6 +202,7 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.
 	jenkins := r.Jenkins
 	item, err := jenkins.GetJobConfig(jobName)
 	gitUrl := ""
+	gitRef := ""
 	if err != nil {
 		return nil, err
 	}
@@ -209,10 +210,10 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.
 	pipelineJob := item.PipelineJobItem
 	if mavenJob != nil {
 		//log.Printf("Found maven job: (%+v)", mavenJob)
-		gitUrl = getGitUrlFromScm(mavenJob.Scm)
+		gitUrl, gitRef = getGitUrlFromScm(mavenJob.Scm)
 	} else if pipelineJob != nil {
 		//log.Printf("Found pipeline job: (%+v)", pipelineJob)
-		gitUrl = getGitUrlFromScm(pipelineJob.Definition.Scm)
+		gitUrl, gitRef  = getGitUrlFromScm(pipelineJob.Definition.Scm)
 	} else {
 		//log.Printf("Unknown job type (%+v)", item);
 		return nil, nil
@@ -231,13 +232,14 @@ func (r BuildConfigsResource) loadBuildConfig(ns string, jobName string) (*oapi.
 					Type: oapi.BuildSourceGit,
 					Git: &oapi.GitBuildSource{
 						URI: gitUrl,
+						Ref: gitRef,
 					},
 
 				},
 			},
 		},
 	}
-	r.loadAnnotations(&buildConfig)
+	r.loadAnnotations(buildConfig)
 	return buildConfig, nil
 }
 
@@ -260,6 +262,10 @@ func (r BuildConfigsResource) updateAnnotations(buildConfig *oapi.BuildConfig) e
 				ObjectMeta: api.ObjectMeta{
 					Name: objectMeta.Name,
 					Annotations: make(map[string]string),
+					Labels: map[string]string{
+						"project": "fabric8",
+						"owner": "jenkinshift",
+					},
 				},
 			}
 			create = true
@@ -295,12 +301,14 @@ func (r BuildConfigsResource) loadAnnotations(buildConfig *oapi.BuildConfig) {
 
 func populateJobForBuildConfig(buildConfig *oapi.BuildConfig, jobItem *gojenkins.JobItem) {
 	gitUrls := []string{}
+	ref := ""
 	gitSource := buildConfig.Spec.CommonSpec.Source.Git
 	if gitSource != nil {
 		uri := gitSource.URI
 		if len(uri) > 0 {
 			gitUrls = append(gitUrls, uri)
 		}
+		ref = gitSource.Ref
 	}
 	script := `node {
 	   stage 'Stage 1'
@@ -308,6 +316,14 @@ func populateJobForBuildConfig(buildConfig *oapi.BuildConfig, jobItem *gojenkins
 	   stage 'Stage 2'
 	   echo 'Hello World 2'
 	}`
+	branches := gojenkins.Branches{}
+	if len(ref) > 0 {
+		branches.BranchesSpec = []gojenkins.BranchesSpec{
+			{
+				Name: ref,
+			},
+		}
+	}
 	jobItem.PipelineJobItem = &gojenkins.PipelineJobItem{
 	 	Definition: gojenkins.PipelineDefinition{
 			Script: script,
@@ -318,27 +334,34 @@ func populateJobForBuildConfig(buildConfig *oapi.BuildConfig, jobItem *gojenkins
 							Urls: gitUrls,
 						},
 					},
+					Branches: branches,
 				},
 			},
 
 		},
 	}
+
 }
 
-func getGitUrlFromScm(scm gojenkins.Scm) string {
-	answer := ""
+func getGitUrlFromScm(scm gojenkins.Scm) (string, string) {
+	url := ""
+	ref := ""
 	scmContent := scm.ScmContent
 	switch t := scmContent.(type) {
 	case *gojenkins.ScmGit:
 		urls := t.UserRemoteConfigs.UserRemoteConfig.Urls
 		if len(urls) > 0 {
-			answer = urls[0]
+			url = urls[0]
 		}
-		if len(answer) == 0 {
-			answer = t.GitBrowser.Url
+		if len(url) == 0 {
+			url = t.GitBrowser.Url
+		}
+		branches := t.Branches.BranchesSpec
+		if len(branches) > 0 {
+			ref = branches[0].Name
 		}
 	}
-	return answer
+	return url, ref
 }
 
 func respondError(request *restful.Request, response *restful.Response, err error) {
