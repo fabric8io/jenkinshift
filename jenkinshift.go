@@ -49,14 +49,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not initialise a client: %v", err)
 	}
-	//ns, _, _ := f.DefaultNamespace()
+	ns, _, _ := f.DefaultNamespace()
 
-	ns := "default"
-	cm, err := c.ConfigMaps(ns).Get("fabric8")
-	if err != nil {
-		log.Fatalf("Could not load ConfigMap: %v", err)
-	}
-	log.Printf("Loaded ConfigMap %s", cm.Name)
+	log.Printf("Using namespace %s", ns)
 
 	jenkins := gojenkins.NewJenkins(auth, jenkinsUrl)
 
